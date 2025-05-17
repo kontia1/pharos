@@ -385,13 +385,13 @@ const main = async () => {
       await performCheckIn(wallet, proxy);
 
       // Transfers
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 10; i++) {
         await transferPHRS(wallet, provider, i);
         await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
       }
 
       // Swaps (with log as [n/10] Swap 0.0002 PHRS → USDT Completed: txhash)
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 10; i++) {
         // Generate random stablecoin and amount for log style
         const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
         const amount = (Math.random() * 0.0008 + 0.0001).toFixed(4);
