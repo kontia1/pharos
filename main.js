@@ -139,7 +139,7 @@ async function addLp(wallet, token1, symbol) {
   }
 }
 
-async function performSwap(privateKey, address, provider, swapIdx, symbolOut, amountStr, totalSwap, walletIdx, totalWallets) {
+async function performSwap(privateKey, address, provider, swapIdx, symbolOut, amountStr, totalSwap) {
   const wallet = new ethers.Wallet(privateKey, provider);
   try {
     const stable = symbolOut === "USDC" ? STABLE_COINS[0] : STABLE_COINS[1];
@@ -182,15 +182,15 @@ async function performSwap(privateKey, address, provider, swapIdx, symbolOut, am
     const receipt = await sentTx.wait();
 
     // --- CUSTOM LOG STYLE ---
-    console.log(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap ${amount} PHRS → ${symbolOut} Completed: ${receipt.hash}`);
+    console.log(`[${swapIdx + 1}/${totalSwap}] Swap ${amount} PHRS → ${symbolOut} Completed: ${receipt.hash}`);
     return receipt;
   } catch (err) {
-    console.error(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap Failed: ${err.message}`);
+    console.error(`[${swapIdx + 1}/${totalSwap}] Swap Failed: ${err.message}`);
     throw err;
   }
 }
 
-const transferPHRS = async (wallet, provider, index, totalTransfer, walletIdx, totalWallets) => {
+const transferPHRS = async (wallet, provider, index, totalTransfer) => {
   try {
     const amount = 0.000001;
     const randomWallet = ethers.Wallet.createRandom();
@@ -210,17 +210,17 @@ const transferPHRS = async (wallet, provider, index, totalTransfer, walletIdx, t
     });
 
     const receipt = await tx.wait();
-    // --- LOG AS [wallet/total] [tx/total]Transfer completed: ... ---
+    // --- LOG AS [1/10 ]Transfer completed: ... ---
     const space = index === 1 ? ' ' : '';
-    console.log(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}${space}]Transfer completed: ${receipt.hash}`);
+    console.log(`[${index + 1}/${totalTransfer}${space}]Transfer completed: ${receipt.hash}`);
   } catch (error) {
     // Optionally show error
   }
 };
 
-const claimFaucet = async (wallet, proxy = null, walletIdx = 0, totalWallets = 1) => {
+const claimFaucet = async (wallet, proxy = null) => {
   try {
-    console.log(`Checking faucet eligibility for wallet: [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
+    console.log(`Checking faucet eligibility for wallet: ${wallet.address}`);
     const message = "pharos";
     const signature = await wallet.signMessage(message);
     const loginUrl = `https://api.pharosnetwork.xyz/user/login?address=${wallet.address}&signature=${signature}&invite_code=rfX8jGZPEp7MiFJ1`;
@@ -248,7 +248,7 @@ const claimFaucet = async (wallet, proxy = null, walletIdx = 0, totalWallets = 1
     const loginResponse = await axios(axiosConfig);
     const loginData = loginResponse.data;
     if (loginData.code !== 0 || !loginData.data.jwt) {
-      console.log(`Login failed for faucet: [${walletIdx + 1}/${totalWallets}]${loginData.msg || 'Unknown error'}`);
+      console.log(`Login failed for faucet: ${loginData.msg || 'Unknown error'}`);
       return false;
     }
     const jwt = loginData.data.jwt;
@@ -265,12 +265,12 @@ const claimFaucet = async (wallet, proxy = null, walletIdx = 0, totalWallets = 1
     });
     const statusData = statusResponse.data;
     if (statusData.code !== 0 || !statusData.data) {
-      console.log(`Faucet status check failed: [${walletIdx + 1}/${totalWallets}]${statusData.msg || 'Unknown error'}`);
+      console.log(`Faucet status check failed: ${statusData.msg || 'Unknown error'}`);
       return false;
     }
     if (!statusData.data.is_able_to_faucet) {
       const nextAvailable = new Date(statusData.data.avaliable_timestamp * 1000).toLocaleString('en-US', { timeZone: 'Asia/Makassar' });
-      console.log(`Faucet not available until: [${walletIdx + 1}/${totalWallets}]${nextAvailable}`);
+      console.log(`Faucet not available until: ${nextAvailable}`);
       return false;
     }
     const claimUrl = `https://api.pharosnetwork.xyz/faucet/daily?address=${wallet.address}`;
@@ -282,21 +282,21 @@ const claimFaucet = async (wallet, proxy = null, walletIdx = 0, totalWallets = 1
     });
     const claimData = claimResponse.data;
     if (claimData.code === 0) {
-      console.log(`Faucet claimed successfully for [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
+      console.log(`Faucet claimed successfully for ${wallet.address}`);
       return true;
     } else {
-      console.log(`Faucet claim failed: [${walletIdx + 1}/${totalWallets}]${claimData.msg || 'Unknown error'}`);
+      console.log(`Faucet claim failed: ${claimData.msg || 'Unknown error'}`);
       return false;
     }
   } catch (error) {
-    console.log(`Faucet claim failed for [${walletIdx + 1}/${totalWallets}]${wallet.address}: ${error.message}`);
+    console.log(`Faucet claim failed for ${wallet.address}: ${error.message}`);
     return false;
   }
 };
 
-const performCheckIn = async (wallet, proxy = null, walletIdx = 0, totalWallets = 1) => {
+const performCheckIn = async (wallet, proxy = null) => {
   try {
-    console.log(`Performing daily check-in for wallet: [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
+    console.log(`Performing daily check-in for wallet: ${wallet.address}`);
     const message = "pharos";
     const signature = await wallet.signMessage(message);
     const loginUrl = `https://api.pharosnetwork.xyz/user/login?address=${wallet.address}&signature=${signature}&invite_code=rfX8jGZPEp7MiFJ1`;
@@ -324,7 +324,7 @@ const performCheckIn = async (wallet, proxy = null, walletIdx = 0, totalWallets 
     const loginResponse = await axios(axiosConfig);
     const loginData = loginResponse.data;
     if (loginData.code !== 0 || !loginData.data.jwt) {
-      console.log(`Login failed: [${walletIdx + 1}/${totalWallets}]${loginData.msg || 'Unknown error'}`);
+      console.log(`Login failed: ${loginData.msg || 'Unknown error'}`);
       return false;
     }
     const jwt = loginData.data.jwt;
@@ -341,14 +341,14 @@ const performCheckIn = async (wallet, proxy = null, walletIdx = 0, totalWallets 
     });
     const checkInData = checkInResponse.data;
     if (checkInData.code === 0) {
-      console.log(`Check-in successful for [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
+      console.log(`Check-in successful for ${wallet.address}`);
       return true;
     } else {
-      console.log(`Check-in failed, possibly already checked in: [${walletIdx + 1}/${totalWallets}]${checkInData.msg || 'Unknown error'}`);
+      console.log(`Check-in failed, possibly already checked in: ${checkInData.msg || 'Unknown error'}`);
       return false;
     }
   } catch (error) {
-    console.log(`Check-in failed for [${walletIdx + 1}/${totalWallets}]${wallet.address}: ${error.message}`);
+    console.log(`Check-in failed for ${wallet.address}: ${error.message}`);
     return false;
   }
 };
@@ -380,32 +380,30 @@ const countdown = async () => {
 const main = async () => {
   const proxies = loadProxies();
   const privateKeys = loadWalletsFromFile('wallet.txt');
-  const totalWallets = privateKeys.length;
-  if (!totalWallets) {
+  if (!privateKeys.length) {
     console.log('No private keys found in wallet.txt');
     return;
   }
 
   // Set your desired numbers for each action
-  const TOTAL_TRANSFER = 30;
-  const TOTAL_SWAP = 10;
+  const TOTAL_TRANSFER = 2;
+  const TOTAL_SWAP = 2;
   const TOTAL_LP = 10;
 
   while (true) {
-    for (let walletIdx = 0; walletIdx < privateKeys.length; walletIdx++) {
-      const privateKey = privateKeys[walletIdx];
+    for (const privateKey of privateKeys) {
       const proxy = proxies.length ? getRandomProxy(proxies) : null;
       const provider = setupProvider(proxy);
       const wallet = new ethers.Wallet(privateKey, provider);
 
-      console.log(`Using wallet: [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
-      await claimFaucet(wallet, proxy, walletIdx, totalWallets);
-      await performCheckIn(wallet, proxy, walletIdx, totalWallets);
+      console.log(`Using wallet: ${wallet.address}`);
+      await claimFaucet(wallet, proxy);
+      await performCheckIn(wallet, proxy);
 
       // Define action functions
       const transferAction = async () => {
         for (let i = 0; i < TOTAL_TRANSFER; i++) {
-          await transferPHRS(wallet, provider, i, TOTAL_TRANSFER, walletIdx, totalWallets);
+          await transferPHRS(wallet, provider, i, TOTAL_TRANSFER);
           await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
         }
       };
@@ -414,7 +412,7 @@ const main = async () => {
         for (let i = 0; i < TOTAL_SWAP; i++) {
           const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
           const amount = (Math.random() * 0.0008 + 0.0001).toFixed(4);
-          await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount, TOTAL_SWAP, walletIdx, totalWallets);
+          await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount, TOTAL_SWAP);
           await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
         }
       };
@@ -425,9 +423,9 @@ const main = async () => {
           const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
           const hash = await addLp(wallet, token1, symbol);
           if (hash) {
-            console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
+            console.log(`[${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
           } else {
-            console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
+            console.log(`[${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
           }
         }
       };
