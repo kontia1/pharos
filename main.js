@@ -386,9 +386,9 @@ const main = async () => {
   }
 
   // Set your desired numbers for each action
-  const TOTAL_TRANSFER = 2;
-  const TOTAL_SWAP = 2;
-  const TOTAL_LP = 10;
+  const TOTAL_TRANSFER = 30;
+  const TOTAL_SWAP = 30;
+  const TOTAL_LP = 30;
 
   while (true) {
     for (const privateKey of privateKeys) {
@@ -418,17 +418,19 @@ const main = async () => {
       };
 
       const addLpAction = async () => {
-        for (let i = 0; i < TOTAL_LP; i++) {
-          const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
-          const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
-          const hash = await addLp(wallet, token1, symbol);
-          if (hash) {
-            console.log(`[${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
-          } else {
-            console.log(`[${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
-          }
-        }
-      };
+  for (let i = 0; i < TOTAL_LP; i++) {
+    const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
+    const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
+    const hash = await addLp(wallet, token1, symbol);
+    if (hash) {
+      console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
+    } else {
+      console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
+    }
+    // Delay: random between 1 and 3 seconds
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
+  }
+};
 
       // Put actions in an array and shuffle
       const actions = [transferAction, swapAction, addLpAction];
