@@ -423,9 +423,9 @@ const main = async () => {
     const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
     const hash = await addLp(wallet, token1, symbol);
     if (hash) {
-      console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
+      console.log(`[[${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
     } else {
-      console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
+      console.log(`[${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
     }
     // Delay: random between 1 and 3 seconds
     await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
