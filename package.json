@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "A bot using axios, dotenv, ethers, and proxy support",
   "main": "main.js",
-  "type": "module",
   "scripts": {
     "start": "node main.js"
   },
