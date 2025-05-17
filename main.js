@@ -386,9 +386,9 @@ const main = async () => {
   }
 
   // Set your desired numbers for each action
-  const TOTAL_TRANSFER = 2;
-  const TOTAL_SWAP = 2;
-  const TOTAL_LP = 10;
+  const TOTAL_TRANSFER = 30;
+  const TOTAL_SWAP = 30;
+  const TOTAL_LP = 30;
 
   while (true) {
     for (const privateKey of privateKeys) {
