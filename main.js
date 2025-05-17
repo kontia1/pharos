@@ -354,12 +354,14 @@ const performCheckIn = async (wallet, proxy = null) => {
 };
 
 const countdown = async () => {
-  const totalSeconds = 30 * 60;
-  console.log('Starting 30-minute countdown...');
+  const totalSeconds = 24 * 60 * 60; // 24 hours
+  console.log('Starting 24-hour countdown...');
+
   for (let seconds = totalSeconds; seconds >= 0; seconds--) {
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    process.stdout.write(`\rTime remaining: ${minutes}m ${secs}s `);
+    process.stdout.write(`\rTime remaining: ${hours}h ${minutes}m ${secs}s `);
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
   process.stdout.write('\rCountdown complete! Restarting process...\n');
