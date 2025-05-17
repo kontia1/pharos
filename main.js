@@ -185,8 +185,8 @@ async function performSwap(privateKey, address, provider, swapIdx, symbolOut, am
     console.log(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap ${amount} PHRS → ${symbolOut} Completed: ${receipt.hash}`);
     return receipt;
   } catch (err) {
-    console.error(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap Failed: ${err.message}`);
-    throw err;
+    console.error(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap error: ${err.message}`);
+    // Do not throw to continue on error
   }
 }
 
@@ -214,7 +214,8 @@ const transferPHRS = async (wallet, provider, index, totalTransfer, walletIdx, t
     const space = index === 1 ? ' ' : '';
     console.log(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}${space}]Transfer completed: ${receipt.hash}`);
   } catch (error) {
-    // Optionally show error
+    console.error(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}] Transfer error: ${error.message}`);
+    // Do not throw to continue on error
   }
 };
 
@@ -423,13 +424,17 @@ const main = async () => {
 
       const addLpAction = async () => {
         for (let i = 0; i < TOTAL_LP; i++) {
-          const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
-          const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
-          const hash = await addLp(wallet, token1, symbol);
-          if (hash) {
-            console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
-          } else {
-            console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
+          try {
+            const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
+            const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
+            const hash = await addLp(wallet, token1, symbol);
+            if (hash) {
+              console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
+            } else {
+              console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
+            }
+          } catch (err) {
+            console.error(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP error: ${err.message}`);
           }
           // Delay: random between 2 and 5 seconds
           await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
@@ -453,4 +458,5 @@ const main = async () => {
 
 main().catch(error => {
   console.log(`Bot failed: ${error.message}`);
+  process.exit(1);
 });
