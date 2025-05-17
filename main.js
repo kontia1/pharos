@@ -182,10 +182,10 @@ async function performSwap(privateKey, address, provider, swapIdx, symbolOut, am
     const receipt = await sentTx.wait();
 
     // --- CUSTOM LOG STYLE ---
-    console.log(`[${swapIdx + 1}/10] Swap ${amount} PHRS → ${symbolOut} Completed: ${receipt.hash}`);
+    console.log(`[${swapIdx + 1}/30] Swap ${amount} PHRS → ${symbolOut} Completed: ${receipt.hash}`);
     return receipt;
   } catch (err) {
-    console.error(`[${swapIdx + 1}/10] Swap Failed: ${err.message}`);
+    console.error(`[${swapIdx + 1}/30] Swap Failed: ${err.message}`);
     throw err;
   }
 }
@@ -210,9 +210,9 @@ const transferPHRS = async (wallet, provider, index) => {
     });
 
     const receipt = await tx.wait();
-    // --- LOG AS [1/10 ]Transfer completed: ... ---
+    // --- LOG AS [1/30 ]Transfer completed: ... ---
     const space = index === 1 ? ' ' : '';
-    console.log(`[${index + 1}/10${space}]Transfer completed: ${receipt.hash}`);
+    console.log(`[${index + 1}/30${space}]Transfer completed: ${receipt.hash}`);
   } catch (error) {
     // Optionally show error
   }
@@ -353,6 +353,15 @@ const performCheckIn = async (wallet, proxy = null) => {
   }
 };
 
+// --- SHUFFLE HELPER ---
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+// --- COUNTDOWN ---
 const countdown = async () => {
   const totalSeconds = 24 * 60 * 60; // 24 hours
   console.log('Starting 24-hour countdown...');
@@ -386,31 +395,43 @@ const main = async () => {
       await claimFaucet(wallet, proxy);
       await performCheckIn(wallet, proxy);
 
-      // Transfers
-      for (let i = 0; i < 10; i++) {
-        await transferPHRS(wallet, provider, i);
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
-      }
-
-      // Swaps (with log as [n/10] Swap 0.0002 PHRS → USDT Completed: txhash)
-      for (let i = 0; i < 10; i++) {
-        // Generate random stablecoin and amount for log style
-        const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
-        const amount = (Math.random() * 0.0008 + 0.0001).toFixed(4);
-        await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount);
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
-      }
-
-      // Add LP 10x, with log per your style
-      for (let i = 0; i < 10; i++) {
-        const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
-        const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
-        const hash = await addLp(wallet, token1, symbol);
-        if (hash) {
-          console.log(`[${i + 1}/10] Add LP ${symbol} hash ${hash}`);
-        } else {
-          console.log(`[${i + 1}/10] Add LP ${symbol} failed`);
+      // Define action functions
+      const transferAction = async () => {
+        for (let i = 0; i < 30; i++) {
+          await transferPHRS(wallet, provider, i);
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
         }
+      };
+
+      const swapAction = async () => {
+        for (let i = 0; i < 30; i++) {
+          const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
+          const amount = (Math.random() * 0.0008 + 0.0001).toFixed(4);
+          await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount);
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
+        }
+      };
+
+      const addLpAction = async () => {
+        for (let i = 0; i < 10; i++) {
+          const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
+          const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
+          const hash = await addLp(wallet, token1, symbol);
+          if (hash) {
+            console.log(`[${i + 1}/30] Add LP ${symbol} hash ${hash}`);
+          } else {
+            console.log(`[${i + 1}/30] Add LP ${symbol} failed`);
+          }
+        }
+      };
+
+      // Put actions in an array and shuffle
+      const actions = [transferAction, swapAction, addLpAction];
+      shuffle(actions);
+
+      // Run actions in random order
+      for (const action of actions) {
+        await action();
       }
     }
 
