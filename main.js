@@ -449,5 +449,4 @@ const main = async () => {
 
 main().catch(error => {
   console.log(`Bot failed: ${error.message}`);
-  process.exit(1);
 });
