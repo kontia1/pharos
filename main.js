@@ -80,18 +80,41 @@ const setupProvider = (proxy = null) => {
   }
 };
 
+// --- Retry Helper for getTransactionReceipt ---
+const waitForReceiptWithRetry = async (provider, txHash, maxRetries = 15, delayMs = 7000) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const receipt = await provider.getTransactionReceipt(txHash);
+      if (receipt) return receipt;
+      throw new Error("Receipt is null");
+    } catch (e) {
+      if (
+        (e.code === "UNKNOWN_ERROR" && e.error && e.error.code === -32008) ||
+        (e.message && (e.message.includes("Unable to complete the request") || e.message.includes("Receipt is null")))
+      ) {
+        console.log(`[RETRY] Receipt not found for tx ${txHash}, waiting ${delayMs/1000}s... (${i+1}/${maxRetries})`);
+        await new Promise(res => setTimeout(res, delayMs));
+      } else {
+        throw e;
+      }
+    }
+  }
+  throw new Error("Max retries reached for getTransactionReceipt for tx " + txHash);
+};
+
 // --- ERC20 APPROVAL (no logs) ---
 async function ensureApproval(wallet, tokenAddress, spender, requiredAmount) {
   const token = new ethers.Contract(tokenAddress, erc20Abi, wallet);
   const allowance = await token.allowance(wallet.address, spender);
   if (BigInt(allowance) < BigInt(requiredAmount)) {
-    const tx = await token.approve(spender, ethers.MaxUint256);
-    await tx.wait();
+    const nonce = await wallet.provider.getTransactionCount(wallet.address, "pending");
+    const tx = await token.approve(spender, ethers.MaxUint256, { nonce });
+    await waitForReceiptWithRetry(wallet.provider, tx.hash);
   }
 }
 
 // --- ADD LP (ONE LP PER CALL) ---
-async function addLp(wallet, token1, symbol) {
+async function addLp(wallet, token1, symbol, provider, walletIdx, totalWallets, lpIdx, totalLp) {
   const router = new ethers.Contract(ROUTER_ADDRESS, routerAbi, wallet);
 
   // --- LP PARAMETERS (adjust as needed) ---
@@ -128,13 +151,22 @@ async function addLp(wallet, token1, symbol) {
   const multicallData = [mintData, refundData];
 
   try {
+    const nonce = await provider.getTransactionCount(wallet.address, 'pending');
     const tx = await router.multicall(multicallData, {
       value: value,
       gasLimit: 500_000,
+      nonce
     });
-    await tx.wait();
-    return tx.hash;
+    let receipt;
+    try {
+      receipt = await waitForReceiptWithRetry(provider, tx.hash);
+      console.log(`[${walletIdx + 1}/${totalWallets}] [${lpIdx + 1}/${totalLp}] Add LP ${symbol} hash ${tx.hash}`);
+    } catch (e) {
+      console.error(`[${walletIdx + 1}/${totalWallets}] [${lpIdx + 1}/${totalLp}] Add LP ${symbol} error: Receipt is null for hash ${tx.hash}`);
+    }
+    return receipt;
   } catch (e) {
+    console.error(`[${walletIdx + 1}/${totalWallets}] [${lpIdx + 1}/${totalLp}] Add LP ${symbol} error: ${e.message}`);
     return null;
   }
 }
@@ -168,21 +200,26 @@ async function performSwap(privateKey, address, provider, swapIdx, symbolOut, am
     const multicallData = contract.interface.encodeFunctionData("multicall", [deadline, [data]]);
     const feeData = await provider.getFeeData();
 
+    const nonce = await provider.getTransactionCount(wallet.address, "pending");
+
     const tx = {
       to: contract.target,
       data: multicallData,
       value: amountWei,
       gasPrice: feeData.gasPrice,
-      nonce: await provider.getTransactionCount(address, "pending"),
+      nonce,
       chainId: 688688
     };
     tx.gasLimit = (await provider.estimateGas(tx)) * 12n / 10n;
 
     const sentTx = await wallet.sendTransaction(tx);
-    const receipt = await sentTx.wait();
-
-    // --- CUSTOM LOG STYLE ---
-    console.log(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap ${amount} PHRS → ${symbolOut} Completed: ${receipt.hash}`);
+    let receipt;
+    try {
+      receipt = await waitForReceiptWithRetry(provider, sentTx.hash);
+      console.log(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap ${amount} PHRS → ${symbolOut} Completed: ${sentTx.hash}`);
+    } catch (e) {
+      console.error(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap error: Receipt is null for hash ${sentTx.hash}`);
+    }
     return receipt;
   } catch (err) {
     console.error(`[${walletIdx + 1}/${totalWallets}] [${swapIdx + 1}/${totalSwap}] Swap error: ${err.message}`);
@@ -202,17 +239,23 @@ const transferPHRS = async (wallet, provider, index, totalTransfer, walletIdx, t
       return;
     }
 
+    const nonce = await provider.getTransactionCount(wallet.address, "pending");
     const tx = await wallet.sendTransaction({
       to: toAddress,
       value: required,
       gasLimit: 21000,
       gasPrice: 0,
+      nonce
     });
 
-    const receipt = await tx.wait();
-    // --- LOG AS [wallet/total] [tx/total]Transfer completed: ... ---
-    const space = index === 1 ? ' ' : '';
-    console.log(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}${space}]Transfer completed: ${receipt.hash}`);
+    let receipt;
+    try {
+      receipt = await waitForReceiptWithRetry(provider, tx.hash);
+      const space = index === 1 ? ' ' : '';
+      console.log(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}${space}]Transfer completed: ${tx.hash}`);
+    } catch (e) {
+      console.error(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}] Transfer error: Receipt is null for hash ${tx.hash}`);
+    }
   } catch (error) {
     console.error(`[${walletIdx + 1}/${totalWallets}] [${index + 1}/${totalTransfer}] Transfer error: ${error.message}`);
     // Do not throw to continue on error
@@ -364,9 +407,8 @@ function shuffle(array) {
 
 // --- COUNTDOWN ---
 const countdown = async () => {
-  const totalSeconds = 24 * 60 * 60; // 24 hours
+  const totalSeconds = 12 * 60 * 60; // 24 hours
   console.log('Starting 24-hour countdown...');
-
   for (let seconds = totalSeconds; seconds >= 0; seconds--) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -388,9 +430,9 @@ const main = async () => {
   }
 
   // Set your desired numbers for each action
-  const TOTAL_TRANSFER = 30;
-  const TOTAL_SWAP = 30;
-  const TOTAL_LP = 30;
+  const TOTAL_TRANSFER = 15;
+  const TOTAL_SWAP = 15;
+  const TOTAL_LP = 15;
 
   while (true) {
     for (let walletIdx = 0; walletIdx < privateKeys.length; walletIdx++) {
@@ -407,7 +449,6 @@ const main = async () => {
       const transferAction = async () => {
         for (let i = 0; i < TOTAL_TRANSFER; i++) {
           await transferPHRS(wallet, provider, i, TOTAL_TRANSFER, walletIdx, totalWallets);
-          // Delay: random between 2 and 5 seconds
           await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
         }
       };
@@ -417,26 +458,15 @@ const main = async () => {
           const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
           const amount = (Math.random() * 0.0008 + 0.0001).toFixed(4);
           await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount, TOTAL_SWAP, walletIdx, totalWallets);
-          // Delay: random between 2 and 5 seconds
           await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
         }
       };
 
       const addLpAction = async () => {
         for (let i = 0; i < TOTAL_LP; i++) {
-          try {
-            const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
-            const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
-            const hash = await addLp(wallet, token1, symbol);
-            if (hash) {
-              console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} hash ${hash}`);
-            } else {
-              console.log(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP ${symbol} failed`);
-            }
-          } catch (err) {
-            console.error(`[${walletIdx + 1}/${totalWallets}] [${i + 1}/${TOTAL_LP}] Add LP error: ${err.message}`);
-          }
-          // Delay: random between 2 and 5 seconds
+          const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
+          const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
+          await addLp(wallet, token1, symbol, provider, walletIdx, totalWallets, i, TOTAL_LP);
           await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
         }
       };
