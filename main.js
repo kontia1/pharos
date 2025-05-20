@@ -407,7 +407,7 @@ function shuffle(array) {
 
 // --- COUNTDOWN ---
 const countdown = async () => {
-  const totalSeconds = 12 * 60 * 60; // 24 hours
+  const totalSeconds = 6 * 60 * 60; // 24 hours
   console.log('Starting 24-hour countdown...');
   for (let seconds = totalSeconds; seconds >= 0; seconds--) {
     const hours = Math.floor(seconds / 3600);
@@ -430,9 +430,9 @@ const main = async () => {
   }
 
   // Set your desired numbers for each action
-  const TOTAL_TRANSFER = 15;
-  const TOTAL_SWAP = 15;
-  const TOTAL_LP = 15;
+  const TOTAL_TRANSFER = 5;
+  const TOTAL_SWAP = 5;
+  const TOTAL_LP = 5;
 
   while (true) {
     for (let walletIdx = 0; walletIdx < privateKeys.length; walletIdx++) {
@@ -488,5 +488,4 @@ const main = async () => {
 
 main().catch(error => {
   console.log(`Bot failed: ${error.message}`);
-  process.exit(1);
 });
