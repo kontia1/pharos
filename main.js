@@ -200,8 +200,8 @@ const getUserInfo = async (wallet, proxy = null, jwt, label = "[UserInfo]") => {
 
 const verifyTask = async (wallet, proxy, jwt, txHash) => {
   let attempts = 0;
-  let maxAttempts = 15;
-  let delayMs = 5000;
+  let maxAttempts = 10;
+  let delayMs = 10000;
   while (attempts < maxAttempts) {
     try {
       console.log(`[VerifyTask] Verifying task ID 103 for transaction: ${txHash}`);
