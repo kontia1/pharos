@@ -545,7 +545,7 @@ const performCheckIn = async (wallet, proxy = null, walletIdx = 0, totalWallets 
 };
 
 const countdown = async () => {
-  const totalSeconds = 6r * 60 * 60; // 24 hours
+  const totalSeconds = 6 * 60 * 60; // 24 hours
   console.log('Starting 6-hour countdown...');
   for (let seconds = totalSeconds; seconds >= 0; seconds--) {
     const hours = Math.floor(seconds / 3600);
