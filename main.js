@@ -545,7 +545,7 @@ const performCheckIn = async (wallet, proxy = null, walletIdx = 0, totalWallets 
 };
 
 const countdown = async () => {
-  const totalSeconds = 6 * 60 * 60; // 24 hours
+  const totalSeconds = 6r * 60 * 60; // 24 hours
   console.log('Starting 6-hour countdown...');
   for (let seconds = totalSeconds; seconds >= 0; seconds--) {
     const hours = Math.floor(seconds / 3600);
@@ -571,6 +571,15 @@ const main = async () => {
   const TOTAL_TRANSFER = 5;
   const TOTAL_SWAP = 5;
   const TOTAL_LP = 5;
+
+  // Helper for shuffling group order
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
 
   while (true) {
     for (let walletIdx = 0; walletIdx < privateKeys.length; walletIdx++) {
@@ -601,88 +610,141 @@ const main = async () => {
             await new Promise(res => setTimeout(res, 60000));
             continue;
           }
-          // Unknown, fatal error
           throw err;
         }
       }
 
       const wallet = new ethers.Wallet(privateKey, provider);
-
       console.log(`Using wallet: [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
 
       // 1. Always login to get JWT first
-      let jwt = await getJwt(wallet, proxy);
-      if (!jwt) {
-        console.log(`[${walletIdx + 1}/${totalWallets}] Failed to get JWT, skipping...`);
+      let jwt;
+      try {
+        jwt = await getJwt(wallet, proxy);
+        if (!jwt) {
+          console.log(`[${walletIdx + 1}/${totalWallets}] Failed to get JWT, skipping...`);
+          continue;
+        }
+      } catch (err) {
+        console.log(`[Wallet ${walletIdx+1}] JWT Error: ${err.message || err}`);
         continue;
       }
 
       // 2. Get user info with that JWT (before actions)
-      const userInfoBefore = await getUserInfo(wallet, proxy, jwt);
+      let userInfoBefore = null;
+      try {
+        userInfoBefore = await getUserInfo(wallet, proxy, jwt);
+        if (userInfoBefore) {
+          console.log(`[UserInfo] User ID: ${userInfoBefore.ID} - Task Points: ${userInfoBefore.TaskPoints} - Total Points: ${userInfoBefore.TotalPoints}`);
+        }
+      } catch (err) {
+        console.log(`[Wallet ${walletIdx+1}] GetUserInfo Error: ${err.message || err}`);
+      }
       const beforeTaskPoints = userInfoBefore ? parseInt(userInfoBefore.TaskPoints) : 0;
       const beforeTotalPoints = userInfoBefore ? parseInt(userInfoBefore.TotalPoints) : 0;
-      if (userInfoBefore) {
-        console.log(`[UserInfo] User ID: ${userInfoBefore.ID} - Task Points: ${userInfoBefore.TaskPoints} - Total Points: ${userInfoBefore.TotalPoints}`);
-      }
 
       // 3. Optionally: daily check-in (can skip if needed)
-      await performCheckIn(wallet, proxy, walletIdx, totalWallets);
+      try {
+        await performCheckIn(wallet, proxy, walletIdx, totalWallets);
+      } catch (err) {
+        console.log(`[Wallet ${walletIdx+1}] CheckIn Error: ${err.message || err}`);
+      }
 
       // 4. Faucet (optional)
-      await claimFaucet(wallet, proxy, walletIdx, totalWallets);
-
-      // 5. Transfers (MANDATORY verifyTask)
-      for (let i = 0; i < TOTAL_TRANSFER; i++) {
-        const receipt = await transferPHRS(wallet, provider, i, TOTAL_TRANSFER, walletIdx, totalWallets);
-        let hash = receipt && receipt.hash ? receipt.hash : null;
-        if (!hash) {
-          console.error(`[VERIFY] Transfer: No transaction hash, but will attempt to verify with null hash.`);
-        }
-        await verifyTask(wallet, proxy, jwt, hash || "0x");
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
+      try {
+        await claimFaucet(wallet, proxy, walletIdx, totalWallets);
+      } catch (err) {
+        console.log(`[Wallet ${walletIdx+1}] Faucet Error: ${err.message || err}`);
       }
 
-      // 6. SWAPs (MANDATORY verifyTask)
-      for (let i = 0; i < TOTAL_SWAP; i++) {
-        const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
-        const amount = (Math.random() * 0.00005 + 0.00001).toFixed(6);
-        const receipt = await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount, TOTAL_SWAP, walletIdx, totalWallets);
-        let hash = receipt && receipt.hash ? receipt.hash : null;
-        if (!hash) {
-          console.error(`[VERIFY] Swap: No transaction hash, but will attempt to verify with null hash.`);
+      // 5. Randomize group order for transfer/swap/lp
+      const actions = [
+        {
+          name: 'transfer',
+          fn: async () => {
+            for (let i = 0; i < TOTAL_TRANSFER; i++) {
+              try {
+                const receipt = await transferPHRS(wallet, provider, i, TOTAL_TRANSFER, walletIdx, totalWallets);
+                let hash = receipt && receipt.hash ? receipt.hash : null;
+                if (!hash) {
+                  console.error(`[VERIFY] Transfer: No transaction hash, but will attempt to verify with null hash.`);
+                }
+                await verifyTask(wallet, proxy, jwt, hash || "0x");
+                await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
+              } catch (err) {
+                console.log(`[Wallet ${walletIdx+1}] Transfer ${i+1}/${TOTAL_TRANSFER} Error: ${err.message || err}`);
+              }
+            }
+          }
+        },
+        {
+          name: 'swap',
+          fn: async () => {
+            for (let i = 0; i < TOTAL_SWAP; i++) {
+              try {
+                const symbolOut = Math.random() < 0.5 ? "USDC" : "USDT";
+                const amount = (Math.random() * 0.00005 + 0.00001).toFixed(6);
+                const receipt = await performSwap(privateKey, wallet.address, provider, i, symbolOut, amount, TOTAL_SWAP, walletIdx, totalWallets);
+                let hash = receipt && receipt.hash ? receipt.hash : null;
+                if (!hash) {
+                  console.error(`[VERIFY] Swap: No transaction hash, but will attempt to verify with null hash.`);
+                }
+                await verifyTask(wallet, proxy, jwt, hash || "0x");
+                await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
+              } catch (err) {
+                console.log(`[Wallet ${walletIdx+1}] Swap ${i+1}/${TOTAL_SWAP} Error: ${err.message || err}`);
+              }
+            }
+          }
+        },
+        {
+          name: 'lp',
+          fn: async () => {
+            for (let i = 0; i < TOTAL_LP; i++) {
+              try {
+                const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
+                const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
+                const receipt = await addLp(wallet, token1, symbol, provider, walletIdx, totalWallets, i, TOTAL_LP);
+                let hash = receipt && receipt.hash ? receipt.hash : null;
+                if (!hash) {
+                  console.error(`[VERIFY] AddLP: No transaction hash, but will attempt to verify with null hash.`);
+                }
+                await verifyTask(wallet, proxy, jwt, hash || "0x");
+                await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
+              } catch (err) {
+                console.log(`[Wallet ${walletIdx+1}] LP ${i+1}/${TOTAL_LP} Error: ${err.message || err}`);
+              }
+            }
+          }
         }
-        await verifyTask(wallet, proxy, jwt, hash || "0x");
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
-      }
+      ];
+      shuffle(actions);
 
-      // 7. LP ADDs (MANDATORY verifyTask)
-      for (let i = 0; i < TOTAL_LP; i++) {
-        const token1 = STABLE_COINS[Math.floor(Math.random() * STABLE_COINS.length)];
-        const symbol = TOKEN_SYMBOLS[token1] || "UNKNOWN";
-        const receipt = await addLp(wallet, token1, symbol, provider, walletIdx, totalWallets, i, TOTAL_LP);
-        let hash = receipt && receipt.hash ? receipt.hash : null;
-        if (!hash) {
-          console.error(`[VERIFY] AddLP: No transaction hash, but will attempt to verify with null hash.`);
-        }
-        await verifyTask(wallet, proxy, jwt, hash || "0x");
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 2000));
+      // Execute the randomized groups in order
+      for (const action of actions) {
+        await action.fn();
       }
 
       // --- GET USER INFO AGAIN TO CHECK POINT GAIN ---
-      const userInfoAfter = await getUserInfo(wallet, proxy, jwt, "[UserInfo][After]");
-      const afterTaskPoints = userInfoAfter ? parseInt(userInfoAfter.TaskPoints) : 0;
-      const afterTotalPoints = userInfoAfter ? parseInt(userInfoAfter.TotalPoints) : 0;
-      const taskGain = afterTaskPoints - beforeTaskPoints;
-      if (userInfoAfter) {
-        console.log(`[UserInfo][After] User ID: ${userInfoAfter.ID} - Task Points: ${userInfoAfter.TaskPoints} - Total Points: ${userInfoAfter.TotalPoints} [${taskGain >= 0 ? "+" : ""}${taskGain}]`);
+      let userInfoAfter = null;
+      try {
+        userInfoAfter = await getUserInfo(wallet, proxy, jwt, "[UserInfo][After]");
+        const afterTaskPoints = userInfoAfter ? parseInt(userInfoAfter.TaskPoints) : 0;
+        const afterTotalPoints = userInfoAfter ? parseInt(userInfoAfter.TotalPoints) : 0;
+        const taskGain = afterTaskPoints - beforeTaskPoints;
+        if (userInfoAfter) {
+          console.log(`[UserInfo][After] User ID: ${userInfoAfter.ID} - Task Points: ${userInfoAfter.TaskPoints} - Total Points: ${userInfoAfter.TotalPoints} [${taskGain >= 0 ? "+" : ""}${taskGain}]`);
+        }
+      } catch (err) {
+        console.log(`[Wallet ${walletIdx+1}] GetUserInfoAfter Error: ${err.message || err}`);
       }
     }
-
     console.log('All actions completed for all wallets!');
     await countdown();
   }
 };
 
 main().catch(error => {
+  // Only fatal errors outside the main loop will be caught here
   console.log(`Bot failed: ${error.message}`);
 });
