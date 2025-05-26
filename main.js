@@ -62,23 +62,40 @@ const getRandomProxy = (proxies) => {
   return proxies[Math.floor(Math.random() * proxies.length)];
 };
 
-const setupProvider = (proxy = null) => {
-  if (proxy) {
-    const agent = new HttpsProxyAgent(proxy);
-    return new ethers.JsonRpcProvider(networkConfig.rpcUrl, {
-      chainId: networkConfig.chainId,
-      name: networkConfig.name,
-    }, {
-      fetchOptions: { agent },
-      headers: { 'User-Agent': randomUseragent.getRandom() },
-    });
-  } else {
-    return new ethers.JsonRpcProvider(networkConfig.rpcUrl, {
-      chainId: networkConfig.chainId,
-      name: networkConfig.name,
-    });
+// --- Robust RPC Provider Creation with Retry ---
+async function createProviderWithRetry(rpcUrl, options, proxy = null, maxRetries = 5, delayMs = 10000) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      let provider;
+      if (proxy) {
+        const agent = new HttpsProxyAgent(proxy);
+        provider = new ethers.JsonRpcProvider(rpcUrl, options, {
+          fetchOptions: { agent },
+          headers: { 'User-Agent': randomUseragent.getRandom() },
+        });
+      } else {
+        provider = new ethers.JsonRpcProvider(rpcUrl, options);
+      }
+      await provider.getNetwork(); // Triggers eth_chainId
+      return provider;
+    } catch (err) {
+      const code = err.code || (err.error && err.error.code);
+      const msg = err.message || (err.error && err.error.message) || String(err);
+      if (
+        (code === "UNKNOWN_ERROR" && msg.includes("Unable to complete the request")) ||
+        (code === -32008)
+      ) {
+        attempt++;
+        console.log(`[Provider] RPC failed, retrying in ${delayMs / 1000}s... (${attempt}/${maxRetries})`);
+        await new Promise(res => setTimeout(res, delayMs));
+      } else {
+        throw err;
+      }
+    }
   }
-};
+  throw new Error('Failed to create provider after several attempts.');
+}
 
 const waitForReceiptWithRetry = async (provider, txHash, maxRetries = 15, delayMs = 7000) => {
   for (let i = 0; i < maxRetries; i++) {
@@ -87,18 +104,25 @@ const waitForReceiptWithRetry = async (provider, txHash, maxRetries = 15, delayM
       if (receipt) return receipt;
       throw new Error("Receipt is null");
     } catch (e) {
+      const code = e.code || (e.error && e.error.code);
+      const msg = e.message || (e.error && e.error.message) || String(e);
+
       if (
-        (e.code === "UNKNOWN_ERROR" && e.error && e.error.code === -32008) ||
-        (e.message && (e.message.includes("Unable to complete the request") || e.message.includes("Receipt is null")))
+        (code === "UNKNOWN_ERROR" && msg.includes("Unable to complete the request")) ||
+        (code === -32008) ||
+        msg.includes("Receipt is null")
       ) {
-        console.log(`[Waiting Confirm tx] ${txHash}, waiting ${delayMs/1000}s... (${i+1}/${maxRetries})`);
+        console.log(`[Waiting Confirm tx] ${txHash}, waiting ${delayMs / 1000}s... (${i + 1}/${maxRetries})`);
         await new Promise(res => setTimeout(res, delayMs));
       } else {
+        console.error(`[waitForReceiptWithRetry] Unexpected error:`, e);
         throw e;
       }
     }
   }
-  throw new Error("Max retries reached for getTransactionReceipt for tx " + txHash);
+  const errMsg = `Max retries reached for getTransactionReceipt for tx ${txHash}`;
+  console.error(`[waitForReceiptWithRetry] ${errMsg}`);
+  throw new Error(errMsg);
 };
 
 // --- JWT Login (always do this first!) ---
@@ -133,7 +157,6 @@ async function getJwt(wallet, proxy = null) {
   }
 }
 
-// --- FORMATTED getUserInfo (returns userInfo object, prints nothing except errors) ---
 const getUserInfo = async (wallet, proxy = null, jwt, label = "[UserInfo]") => {
   try {
     const profileUrl = `https://api.pharosnetwork.xyz/user/profile?address=${wallet.address}`;
@@ -177,8 +200,8 @@ const getUserInfo = async (wallet, proxy = null, jwt, label = "[UserInfo]") => {
 
 const verifyTask = async (wallet, proxy, jwt, txHash) => {
   let attempts = 0;
-  let maxAttempts = 10;
-  let delayMs = 10000;
+  let maxAttempts = 15;
+  let delayMs = 5000;
   while (attempts < maxAttempts) {
     try {
       console.log(`[VerifyTask] Verifying task ID 103 for transaction: ${txHash}`);
@@ -553,7 +576,36 @@ const main = async () => {
     for (let walletIdx = 0; walletIdx < privateKeys.length; walletIdx++) {
       const privateKey = privateKeys[walletIdx];
       const proxy = proxies.length ? getRandomProxy(proxies) : null;
-      const provider = setupProvider(proxy);
+
+      // --- Robust Provider Creation ---
+      let provider;
+      while (true) {
+        try {
+          provider = await createProviderWithRetry(
+            networkConfig.rpcUrl,
+            {
+              chainId: networkConfig.chainId,
+              name: networkConfig.name,
+            },
+            proxy
+          );
+          break;
+        } catch (err) {
+          const code = err.code || (err.error && err.error.code);
+          const msg = err.message || (err.error && err.error.message) || String(err);
+          if (
+            (code === "UNKNOWN_ERROR" && msg.includes("Unable to complete the request")) ||
+            (code === -32008)
+          ) {
+            console.log("[Main] RPC unavailable, will retry provider in 60 seconds...");
+            await new Promise(res => setTimeout(res, 60000));
+            continue;
+          }
+          // Unknown, fatal error
+          throw err;
+        }
+      }
+
       const wallet = new ethers.Wallet(privateKey, provider);
 
       console.log(`Using wallet: [${walletIdx + 1}/${totalWallets}]${wallet.address}`);
