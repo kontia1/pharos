@@ -545,7 +545,7 @@ const performCheckIn = async (wallet, proxy = null, walletIdx = 0, totalWallets 
 };
 
 const countdown = async () => {
-  const totalSeconds = 6 * 60 * 60; // 24 hours
+  const totalSeconds = 6 * 60 * 60; // 6 hours
   console.log('Starting 6-hour countdown...');
   for (let seconds = totalSeconds; seconds >= 0; seconds--) {
     const hours = Math.floor(seconds / 3600);
@@ -744,7 +744,17 @@ const main = async () => {
   }
 };
 
-main().catch(error => {
-  // Only fatal errors outside the main loop will be caught here
-  console.log(`Bot failed: ${error.message}`);
-});
+// Outer super-loop: Never stop, even on fatal errors
+async function forever() {
+  while (true) {
+    try {
+      await main();
+    } catch (err) {
+      console.log('[FATAL OUTER ERROR]', err.message || err);
+      console.log('Restarting main() in 1 minute...');
+      await new Promise(res => setTimeout(res, 60000));
+    }
+  }
+}
+
+forever();
