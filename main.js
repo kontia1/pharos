@@ -14,12 +14,12 @@ const networkConfig = {
 const ROUTER_ADDRESS = "0xf8a1d4ff0f9b9af7ce58e1fc1833688f3bfd6115";
 const PHRS_ADDRESS = "0x76aaaDA469D23216bE5f7C596fA25F282Ff9b364";
 const STABLE_COINS = [
-  "0xad902cf99c2de2f1ba5ec4d642fd7e49cae9ee37", // USDC
-  "0xed59de2d7ad9c043442e381231ee3646fc3c2939" // USDT
+  "0x72df0bcd7276f2dFbAc900D1CE63c272C4BCcCED", // USDC
+  "0xD4071393f8716661958F766DF660033b3d35fD29" // USDT
 ];
 const TOKEN_SYMBOLS = {
-  "0xad902cf99c2de2f1ba5ec4d642fd7e49cae9ee37": "USDC",
-  "0xed59de2d7ad9c043442e381231ee3646fc3c2939": "USDT"
+  "0x72df0bcd7276f2dFbAc900D1CE63c272C4BCcCED": "USDC",
+  "0xD4071393f8716661958F766DF660033b3d35fD29": "USDT"
 };
 const routerAbi = [
   "function multicall(bytes[] data) payable",
